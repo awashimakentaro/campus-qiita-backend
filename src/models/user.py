@@ -11,4 +11,4 @@ class User(Base):#Python のクラスを使ってusers というテーブルを�
     role = Column(String(50), nullable=False, default="student")  # student | mod | admin
     bio = Column(String(500))
     created_at = Column(DateTime(timezone=True), server_default=func.now())#DateTime(timezone=True) → タイムゾーン付き日時型 server_default=func.now() → DBサーバーが勝手に現在時刻を入れる つまり「ユーザーが登録された時間」が自動で残る
-    
+    articles = relationship("Article", back_populates="author", cascade="all, delete-orphan")

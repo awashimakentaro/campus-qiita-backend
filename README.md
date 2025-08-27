@@ -38,3 +38,16 @@ psql
 -c "..."
 → -c オプションは「SQL文を1回だけ実行して終了する」という意味。
 "..." の中に書いたSQLをそのまま投げる。
+
+dbdiagramからGitHubに載せる最短手順
+
+dbdiagramで Export → DBML（erd.dbml）
+
+Export → PNG/SVG（erd.png or erd.svg）
+
+リポジトリに /docs/db/ フォルダを作って両方配置
+
+README.md に画像を貼る（差分が見やすい）
+
+## ERD
+![ERD](docs/db/erd.png)
