@@ -1,4 +1,8 @@
 # campus-qiita-backend
+Readmeの書き方
+https://qiita.com/shun198/items/c983c713452c041ef787
+
+
 大学版キータ(FastAPI)の開発
 
 dockerの起動方法
@@ -10,7 +14,7 @@ dockerの起動方法
 -docker exec -it uniqiita-db psql -U postgres -d uni_qiita -c "SELECT version();"　「DBがPostgresの何バージョンで動いてるか」を確認
 -docker exec -it uniqiita-db psql -U postgres -d uni_qiita -c "SELECT 1;"  DBが正しく動いてSQLを返せるか」
 
-
+dockerデスクトップのexecではpsql -U postgres -d uni_qiita　と打つとそこでsqlのコマンドを打てる
 `メモ`
 docker exec -it uniqiita-db psql -U postgres -d uni_qiita -c "..."
 
