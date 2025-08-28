@@ -1,7 +1,7 @@
 # campus-qiita-backend
 Readmeの書き方
 https://qiita.com/shun198/items/c983c713452c041ef787
-
+jetとは　https://qiita.com/arara4510/items/55fc005f8f676f40afcb
 
 大学版キータ(FastAPI)の開発
 
