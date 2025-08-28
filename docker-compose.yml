@@ -24,9 +24,9 @@ services: #動かすアプリやコンテナの一覧」を定義するブロッ
       context: .
       dockerfile: Dockerfile
     container_name: uniqiita-backend
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload #commandによってdockerでのコンテナ起動時にこれが実行されswaggerを使えるようになる
     ports:
-      - "8000:8000"
+      - "8000:8000" #12行目のと同じようにlocalとコンテナを結びつける？
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/uni_qiita
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}

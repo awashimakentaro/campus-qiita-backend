@@ -19,7 +19,7 @@ def login():
     google_auth_url = (
         "https://accounts.google.com/o/oauth2/v2/auth"#Googleのログイン画面にアクセスするための固定URL。
         f"?client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
+        f"&redirect_uri={REDIRECT_URI}"#ここで.envで指定したリダイレクトurlに飛ぶ
         "&response_type=code"
         "&scope=openid%20email%20profile"
     )
@@ -53,7 +53,7 @@ async def callback(request: Request, code: str):
         email = payload.get("email")
 
         # ドメインチェック
-        if not email.endswith(f"@{ALLOWED_DOMAIN}"):
+        if not email.endswith(f"@{ALLOWED_DOMAIN}"): #ここでu-aizu.ac.jpを判別
             raise HTTPException(status_code=403, detail="Domain not allowed")
 
         # 自前のJWT発行（ユーザー管理につなげる）

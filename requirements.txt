@@ -6,3 +6,8 @@ psycopg[binary]
 SQLAlchemy
 python-dotenv
 bleach
+#何をする？
+#
+#アプリが必要とするPythonパッケージを明示。
+#覚えること：「requirements.txt = ライブラリ一覧表」
+#Dockerfile がこれを読んで pip install → 再現性の高い環境が作れる。これはfastapiのライブラリをダウンロードするコマンド
