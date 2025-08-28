@@ -9,15 +9,19 @@ from dotenv import load_dotenv
 # --- ① .env を読む（これより前に getenv を呼ばない） ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))   # .../backend/migrations
 PROJECT_ROOT = os.path.dirname(BASE_DIR)                # .../backend
-load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 
-# --- ② import パスと Base の読み込み ---
+
+load_dotenv(os.path.join(PROJECT_ROOT, ".env"))
 if PROJECT_ROOT not in sys.path:
     sys.path.append(PROJECT_ROOT)
 
 from src.models import Base
 from src.models.user import User       # noqa: F401
 from src.models.article import Article # noqa: F401
+from src.models.tag import Tag         # noqa: F401
+from src.models.article_tag import article_tags  # noqa: F401
+
+
 # 今後、Tag などを追加したらここに import を足す
 
 # --- ③ Alembic の基本設定 ---
