@@ -1,0 +1,179 @@
+https://qiita.com/kojiro513/items/d75c421971ec2222a355
+
+
+いいリクエスト！✨
+ここまでやってきた **Step1〜Step5** の流れを、「操作コマンド」「意味」「できること」を README に載せられる形でまとめてみるね。
+
+---
+
+# 📘 開発環境セットアップ手順（Postgres + SQLAlchemy + Alembic）
+
+## Step 1. DockerでPostgresを起動
+
+```bash
+docker compose up -d
+docker compose ps
+```
+
+* **意味**: `docker-compose.yml` に定義したDBサービスをバックグラウンドで起動。
+* **できること**: ローカルにPostgresサーバーが立ち上がり、アプリから接続できる。
+
+### 接続確認
+
+```bash
+docker exec -it uniqiita-db psql -U postgres -d uni_qiita
+```
+
+* **意味**: コンテナ内で `psql` を実行してDBに接続する。
+* **できること**: SQLを直接打ち込んで動作確認できる（例: `SELECT 1;`）。
+
+---
+
+## Step 2. SQLAlchemyモデル定義
+
+例: `src/models/user.py`
+
+```python
+from sqlalchemy import Column, Integer, String, DateTime, func
+from . import Base
+
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String(100), nullable=False)
+    email = Column(String(255), unique=True, nullable=False)
+    role = Column(String(50), nullable=False, default="student")
+    bio = Column(String(500))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+```
+
+* **意味**: PythonクラスをDBのテーブルに対応させる（ORM: Object Relational Mapping）。
+* **できること**: PythonコードからDB操作ができるようになる。
+
+  ```python
+  new_user = User(name="Kentaro", email="kentaro@u-aizu.ac.jp")
+  session.add(new_user); session.commit()
+  ```
+
+---
+
+## Step 3. Alembic初期化
+
+```bash
+alembic init migrations　　
+```
+alembicはデータベースの統計図　と　実際のテーブル状態を一致させるための仕組み、その初期化コマンドがこれ
+これをするとalembic.ini　migrationsフォルダ、その中にenv.py script.py.mako があある　　　を作成
+
+これ以降はalembic revision --autogenerate で「モデルとDBの差分」からマイグレーションファイルを生成できる
+alembic upgrade head でマイグレーションをDBに適用できる
+* **意味**: Alembicの設定ファイルと `migrations/` ディレクトリを生成。
+* **できること**: モデルとDBスキーマの差分を管理できるようになる。
+
+
+alembic.ini
+
+Alembic 全体の設定ファイル
+
+主な役割：
+
+sqlalchemy.url … どのDBに接続するか（例: PostgreSQL の接続URL）
+
+script_location … マイグレーションファイルを置くディレクトリ（初期値は migrations）
+
+ログの設定
+
+つまり 「Alembicはどこに向かって動くか」を決める地図 みたいなもの
+
+
+
+
+migrations/ ディレクトリ
+
+マイグレーション用のノート
+
+この中に「revisionファイル（差分ファイル）」がどんどん増えていく
+
+env.py
+
+Alembic が実際にマイグレーションを実行するときに読み込むスクリプト
+
+ここで「どの Base.metadata を使うか」を指定することで、自動生成が可能になる
+
+役割：モデル定義とDBをつなぐ橋渡し
+
+script.py.mako
+
+マイグレーションファイルのテンプレート
+
+alembic revision を実行すると、このテンプレートを基にした新しいファイルが生成される
+
+versions/
+
+空フォルダ（最初は空）
+
+alembic revision --autogenerate すると、この中に
+
+1234_add_users_table.py
+5678_add_articles_table.py
+
+
+のような差分ファイルが増えていく
+
+* `alembic.ini` → `sqlalchemy.url` は空にして `.env` から読む
+* `migrations/env.py` → `Base.metadata` を読み込むよう編集
+
+---
+
+## Step 4. マイグレーション生成
+
+```bash
+alembic revision --autogenerate -m "init schema"
+```
+
+* **意味**: モデルとDBを比較し、差分のSQL（create tableなど）を自動生成。
+* **できること**: `migrations/versions/*.py` に `op.create_table(...)` が書かれたファイルができる。
+
+---
+
+## Step 5. マイグレーション適用
+
+```bash
+alembic upgrade head
+```
+
+* **意味**: 最新のマイグレーションを実行してDBスキーマを更新。
+* **できること**: 実際にDBにテーブル（users, articlesなど）が作られる。
+
+### テーブル確認
+
+```bash
+docker exec -it uniqiita-db psql -U postgres -d uni_qiita -c "\dt"
+```
+
+* **意味**: DB内のテーブル一覧を表示。
+* **できること**: `users`, `articles` などが見える。
+
+### カラム構造確認
+
+```bash
+docker exec -it uniqiita-db psql -U postgres -d uni_qiita -c "\d users"
+```
+
+* **意味**: `users` テーブルのカラム、型、制約を確認。
+* **できること**: モデルで定義した内容がDBに反映されているかチェックできる。
+
+---
+
+# ✅ まとめ
+
+* **Docker** → Postgresサーバーをローカルで起動・永続化
+* **SQLAlchemy** → PythonクラスでDBテーブルを表現し、コードからDB操作可能に
+* **Alembic** → モデルとDBの差分を管理し、自動でマイグレーションを作成・適用
+
+これで「モデルを書くだけ → Alembicで自動生成 → `upgrade head` でDBに反映」という開発サイクルが完成！ 🚀
+
+---
+
+👉 このままREADMEに載せられるような体裁にしたけど、
+もっと「学習用の補足解説（例: ORMってなに？）」を厚めにしたバージョンも作る？

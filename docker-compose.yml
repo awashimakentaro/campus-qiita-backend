@@ -1,0 +1,46 @@
+services: #動かすアプリやコンテナの一覧」を定義するブロック。例えばdb backend frontend とか書くとそれぞれのコンテナができる。docker compose up で立ち上げられる。
+  db: #なぜ必要？他のサービス（例: backend）から「DBに接続したい！」とするときに、ホスト名 db で通信できる。
+    image: postgres:15 #vesrionの固定
+    container_name: uniqiita-db #コンテナの名前
+    #postgersとはPostgreSQLというものでざっくりいうとExcelの強化版みたいなもの。データ表を管理するソフトみたいなイメージ
+    #enviroment のなかにはpostgresがはいってるけどmysqlだとかでもいい
+    environment: #何のためにあるんだろ
+      POSTGRES_USER: postgres #初期ユーザーめい
+      POSTGRES_PASSWORD: postgres #初期パスワード
+      POSTGRES_DB: uni_qiita #初回起動時に自動作成するデータベース
+    ports:
+      - "5432:5432"   #ポートの橋渡しmacからdbにアクセスできるようにする
+    volumes:
+      - db_data:/var/lib/postgresql/data #:のdb_data 右はコンテナのディレクトリめい　:の左は名前付きvolume ? 右はコンテナの中のフォルダと、ホスト側の永続ストレージを紐づける。 データの倉庫的なやつ
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d uni_qiita"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: uniqiita-backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload #commandによってdockerでのコンテナ起動時にこれが実行されswaggerを使えるようになる
+    ports:
+      - "8000:8000" #12行目のと同じようにlocalとコンテナを結びつける？
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@db:5432/uni_qiita
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_REDIRECT_URI: http://localhost:8000/auth/callback
+      ALLOWED_DOMAIN: u-aizu.ac.jp
+    volumes:
+      - .:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+
+volumes: #これは (1) で指定した db_data を名前付きボリュームとして定義しているだけ。
+  db_data:
