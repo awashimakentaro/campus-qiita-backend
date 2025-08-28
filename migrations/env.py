@@ -18,8 +18,13 @@ if PROJECT_ROOT not in sys.path:
 from src.models import Base
 from src.models.user import User       # noqa: F401
 from src.models.article import Article # noqa: F401
-from src.models.tag import Tag         # noqa: F401
+from src.models.tag import Tag                   # noqa: F401  （※もう入っていればOK）
 from src.models.article_tag import article_tags  # noqa: F401
+from src.models.like import Like                 # noqa: F401
+from src.models.comment import Comment           # noqa: F401
+from src.models.report import Report             # noqa: F401
+from src.models.audit_log import AuditLog        # noqa: F401
+from src.models.university import University     # noqa: F401
 
 
 # 今後、Tag などを追加したらここに import を足す
