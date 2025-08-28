@@ -11,7 +11,7 @@ CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
 CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI")
 ALLOWED_DOMAIN = os.getenv("ALLOWED_DOMAIN")
-JWT_SECRET = "secret"  # 後でちゃんとした秘密鍵に変える
+JWT_SECRET = os.getenv("JWT_SECRET")  # ← ハードコードを削除してenvから読む
 
 # Google の認証ページにリダイレクト
 @router.get("/login")#auth/loginってことだね　これはページではなくAPIエンドポイントhttp://localhost:8000/auth/login にアクセスすると、この関数が実行される。
