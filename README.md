@@ -55,3 +55,16 @@ README.md に画像を貼る（差分が見やすい）
 
 ## ERD
 ![ERD](docs/db/erd.png)
+
+
+app/FastAPI アプリのエントリや ルーター / スキーマ / 依存関係 など
+ ├── main.py            # FastAPIエントリ
+ ├── routers/           # APIルーター (articles.py, users.py ...)
+ ├── schemas/           # Pydanticスキーマ
+ ├── utils/             # 共通処理
+ └── deps.py            # 依存関係 (DBセッション取得など)
+
+ src/ 	•	ドメインロジック（ビジネスロジック）やDBモデルを置く。
+ ├── models/            # SQLAlchemyモデル (article.py, user.py ...)
+ ├── services/          # ドメインロジック (記事投稿処理, 人気順スコア計算...)
+ └── repositories/      # DBアクセス層 (クエリ操作をまとめる)
