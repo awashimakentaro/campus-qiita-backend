@@ -2,6 +2,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status , Query
 from sqlalchemy.orm import Session
 from typing import List
+from sqlalchemy import insert 
 
 from app.schemas.article import ArticleCreate, ArticleUpdate, ArticleOut
 from src.models.article import Article
@@ -11,6 +12,7 @@ from app.dependencies import get_current_user  # 認証済ユーザーを取る�
 from src.models.article import Article
 from src.models.tag import Tag
 from src.models.article_tag import article_tags  # ← 中間テーブルをimport
+from app.schemas.article_tag import ArticleTagAttach
 
 
 router = APIRouter(
@@ -113,4 +115,35 @@ def delete_article(
 
     db.delete(article)
     db.commit()
+    return None
+
+# 記事にタグを付与（本人のみ）
+@router.post("/{article_id}/tags", status_code=status.HTTP_204_NO_CONTENT)
+def attach_tag_to_article(
+    article_id: int,
+    payload: ArticleTagAttach,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    # 記事の存在 & 権限チェック
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    if article.author_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    # タグ存在チェック
+    tag = db.query(Tag).filter(Tag.id == payload.tag_id).first()
+    if not tag:
+        raise HTTPException(status_code=404, detail="Tag not found")
+
+    # 中間テーブルに挿入（重複は無視してOK）
+    try:
+        db.execute(
+            insert(article_tags).values(article_id=article_id, tag_id=payload.tag_id)
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        # 既に存在などは204で黙って返す運用（必要なら400にしてもOK）
     return None

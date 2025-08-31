@@ -17,6 +17,7 @@ dockerの起動方法
 dockerデスクトップのexecではpsql -U postgres -d uni_qiita　と打つとそこでsqlのコマンドを打てる
 `メモ`
 docker exec -it uniqiita-db psql -U postgres -d uni_qiita -c "..."
+   
 
 
 docker exec
