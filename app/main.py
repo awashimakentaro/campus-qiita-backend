@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from app.routers import auth
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers.articles import router as articles_router
+from app.routers import tags
 
 app = FastAPI(title="UniQiita API", version="0.1.0")
 #なんこれ
@@ -17,6 +18,7 @@ app.add_middleware(
 # ルーター登録（/auth/login, /auth/callback など）
 app.include_router(auth.router)
 app.include_router(articles_router)
+app.include_router(tags.router)
 
 # 動作確認用
 @app.get("/healthz")
