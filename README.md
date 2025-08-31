@@ -17,6 +17,7 @@ dockerの起動方法
 dockerデスクトップのexecではpsql -U postgres -d uni_qiita　と打つとそこでsqlのコマンドを打てる
 `メモ`
 docker exec -it uniqiita-db psql -U postgres -d uni_qiita -c "..."
+   
 
 
 docker exec
@@ -68,3 +69,33 @@ app/FastAPI アプリのエントリや ルーター / スキーマ / 依存関�
  ├── models/            # SQLAlchemyモデル (article.py, user.py ...)
  ├── services/          # ドメインロジック (記事投稿処理, 人気順スコア計算...)
  └── repositories/      # DBアクセス層 (クエリ操作をまとめる)
+
+
+
+SELECT <取り出したいカラム>
+FROM <どのテーブルから>
+WHERE <条件>
+ORDER BY <並び順>
+LIMIT <何件取るか>;
+
+
+postgresql+psycopg://postgres:postgres@db:5432/uni_qiita
+これは PostgreSQL に接続するための URL（接続文字列）です。アプリ（FastAPI + SQLAlchemy）が DB に繋ぐときに使ってるやつ。
+	postgresql+psycopg
+→ DBの種類とドライバ
+	•	postgresql = PostgreSQL を使う
+	•	+psycopg = Python 用のドライバ（psycopg3）を経由する
+	•	postgres:postgres
+→ ユーザー名:パスワード
+	•	ユーザー: postgres
+	•	パスワード: postgres
+	•	@db:5432
+→ ホスト名とポート
+	•	ホスト: db （docker-compose 内でDBコンテナに付けたサービス名）
+	•	ポート: 5432（Postgresのデフォルトポート）
+	•	/uni_qiita
+→ 接続するデータベース
+	•	今回は uni_qiita というDBを使う
+
+ "insert into article_tags (article_id, tag_id) values (2, 1) on conflict do nothing;"
+
