@@ -15,7 +15,7 @@ router = APIRouter(
 )
 
 # 記事作成
-@router.post("/", response_model=ArticleOut)
+@router.post("/", response_model=ArticleOut)#response_model=ArticleOutはAritcleoutの形で整形して返すという意味dbモデルのままでなく必要なフィールドで抜き出してjそんする
 def create_article(
     article_in: ArticleCreate,
     db: Session = Depends(get_db),

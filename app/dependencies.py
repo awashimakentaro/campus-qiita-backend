@@ -1,4 +1,5 @@
 # app/dependencies.py
+#	dependencies.py = 「エンドポイントで共通して必要なユーザー/DB/権限などを注入する場所」
 from fastapi import Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -11,8 +12,13 @@ def get_current_user(db: Session = Depends(get_db)):
     """
     user = db.query(User).filter(User.id == 1).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found (dummy auth)",
+        user = User(
+            id=1,
+            name="Dummy", 
+            email="dummy@u-aizu.ac.jp",
+            role="student"
         )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
     return user

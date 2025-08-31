@@ -1,8 +1,8 @@
-# app/schemas/article.py
+# app/schemas/article.py ルールをかいている
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
-
+from pydantic import ConfigDict
 # 記事作成用
 class ArticleCreate(BaseModel):
     title: str
@@ -17,6 +17,9 @@ class ArticleUpdate(BaseModel):
 
 # 出力用（一覧や詳細で返す）
 class ArticleOut(BaseModel):
+    # v2: ORMオブジェクトからの生成を許可
+    model_config = ConfigDict(from_attributes=True)
+
     id: int
     author_id: int
     title: str
@@ -26,5 +29,4 @@ class ArticleOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        orm_mode = True
+   
