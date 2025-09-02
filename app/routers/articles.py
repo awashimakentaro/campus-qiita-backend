@@ -156,21 +156,32 @@ class CommentOut(BaseModel):
 def _to_iso(dt: datetime | None) -> str:
     return (dt or datetime.utcnow()).isoformat()
 
-def _comment_to_out(c: CommentModel) -> CommentOut:
-    author: UserModel = c.author
+# これまでの _comment_to_out を差し替え
+def _comment_to_out(c: CommentModel, db: Session) -> CommentOut:
+    # リレーションがある場合は使い、ない場合は author_id から取得
+    author: UserModel | None = getattr(c, "author", None)
+    if author is None:
+        author_id = getattr(c, "author_id", None)
+        if author_id is not None:
+            author = db.query(UserModel).filter(UserModel.id == author_id).first()
+
+    # フォールバック（authorが取得できない場合の最低限）
+    author_out = UserOutMini(
+        id=str(getattr(author, "id", "")),
+        name=getattr(author, "name", "Unknown"),
+        email=getattr(author, "email", None),
+        avatar=getattr(author, "avatar", None),
+    )
+
     return CommentOut(
         id=str(c.id),
         body=getattr(c, "body_md", None) or getattr(c, "body", "") or "",
-        author=UserOutMini(
-            id=str(author.id),
-            name=author.name,
-            email=getattr(author, "email", None),
-            avatar=getattr(author, "avatar", None),
-        ),
+        author=author_out,
         article_id=str(c.article_id),
         createdAt=_to_iso(getattr(c, "created_at", None)),
         updatedAt=_to_iso(getattr(c, "updated_at", None)),
     )
+# ====== コメント ======
 
 @router.get("/{article_id}/comments", response_model=List[CommentOut])
 def list_comments(
@@ -184,7 +195,8 @@ def list_comments(
         .order_by(CommentModel.created_at.asc())
         .all()
     )
-    return [_comment_to_out(c) for c in comments]
+    return [_comment_to_out(c, db) for c in comments]  # ← db を渡す
+
 
 @router.post("/{article_id}/comments", response_model=CommentOut, status_code=status.HTTP_201_CREATED)
 def create_comment(
@@ -193,23 +205,35 @@ def create_comment(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
 ):
+    # 記事の存在チェック
     article = db.query(Article).filter(Article.id == article_id).first()
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
 
-    body_md = payload.body.strip()
+    body_md = (payload.body or "").strip()
     if not body_md:
         raise HTTPException(status_code=422, detail="body is required")
 
+    # Markdown→HTML（存在すれば使う）
     body_html = render_and_sanitize(body_md)
 
-    c = CommentModel(
-        article_id=article_id,
-        author_id=current_user.id,
-        body_md=body_md,
-        body_html=body_html,
-    )
+    # ✅ ここで fields を定義してから CommentModel に渡す
+    fields = {"article_id": article_id, "author_id": current_user.id}
+    if hasattr(CommentModel, "body_md"):
+        fields["body_md"] = body_md
+        if hasattr(CommentModel, "body_html"):
+            fields["body_html"] = body_html
+    elif hasattr(CommentModel, "body"):
+        fields["body"] = body_md
+        if hasattr(CommentModel, "body_html"):
+            fields["body_html"] = body_html
+    else:
+        raise HTTPException(status_code=500, detail="Comment model has no body/body_md column")
+
+    c = CommentModel(**fields)
     db.add(c)
     db.commit()
     db.refresh(c)
-    return _comment_to_out(c)
+
+    # _comment_to_out は db を渡す新版を使うこと（前の手順で差し替え済みのはず）
+    return _comment_to_out(c, db)
