@@ -11,7 +11,7 @@ router = APIRouter(
     tags=["tags"],
 )
 
-# タグ作成
+# タグ作成aa
 @router.post("/", response_model=TagOut)
 def create_tag(tag_in: TagCreate, db: Session = Depends(get_db)):
     existing = db.query(Tag).filter(Tag.name == tag_in.name).first()
