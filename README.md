@@ -99,3 +99,5 @@ postgresql+psycopg://postgres:postgres@db:5432/uni_qiita
 
  "insert into article_tags (article_id, tag_id) values (2, 1) on conflict do nothing;"
 
+git reset --hard origin/main でlocalをリモートの状態にする
+git clean -fd　とすることで余分なフォルダを消す
