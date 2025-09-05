@@ -237,3 +237,15 @@ def create_comment(
 
     # _comment_to_out は db を渡す新版を使うこと（前の手順で差し替え済みのはず）
     return _comment_to_out(c, db)
+
+# 自分の記事一覧（公開/非公開どちらも。is_published を付ければ絞り込み可）
+@router.get("/me", response_model=List[ArticleOut])
+def list_my_articles(
+    is_published: bool | None = None,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    q = db.query(Article).filter(Article.author_id == current_user.id)
+    if is_published is not None:
+        q = q.filter(Article.is_published == is_published)
+    return q.order_by(Article.created_at.desc()).all()  
