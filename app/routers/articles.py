@@ -271,7 +271,7 @@ def like_article(
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
 
-    # 既に like 済みか？q
+    # 既に like 済みか？
     exists = (
         db.query(Like)
         .filter(Like.article_id == article_id, Like.user_id == current_user.id)
