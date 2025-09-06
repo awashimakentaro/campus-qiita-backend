@@ -29,5 +29,7 @@ class ArticleOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     likes_count: int = 0 
+    comments_count: int = 0
+
 
    

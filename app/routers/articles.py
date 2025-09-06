@@ -1,5 +1,5 @@
 # app/routers/articles.p
-from typing import List
+from typing import List , Literal
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -45,18 +45,80 @@ def create_article(
     db.refresh(article)
     return article
 
+from typing import List, Literal  # ← 先頭の import に追加
+
 @router.get("/", response_model=List[ArticleOut])
 def list_articles(
     query: str | None = Query(None, description="キーワード全文検索"),
     tag: str | None = Query(None, description="タグ名による絞り込み"),
+    sort: Literal["popular", "recent", "comments"] = Query("popular", description="並び替え"),
     db: Session = Depends(get_db),
 ):
-    q = db.query(Article).filter(Article.is_published == True)
+    # いいね数 / コメント数のサブクエリ
+    likes_sq = (
+        db.query(Like.article_id.label("article_id"),
+                 func.count(Like.user_id).label("likes_count"))
+        .group_by(Like.article_id)
+        .subquery()
+    )
+    comments_sq = (
+        db.query(CommentModel.article_id.label("article_id"),
+                 func.count(CommentModel.id).label("comments_count"))
+        .group_by(CommentModel.article_id)
+        .subquery()
+    )
+
+    # ベースクエリ（公開記事のみ）
+    q = (
+        db.query(
+            Article,
+            func.coalesce(likes_sq.c.likes_count, 0).label("likes_count"),
+            func.coalesce(comments_sq.c.comments_count, 0).label("comments_count"),
+        )
+        .outerjoin(likes_sq, likes_sq.c.article_id == Article.id)
+        .outerjoin(comments_sq, comments_sq.c.article_id == Article.id)
+        .filter(Article.is_published == True)
+    )
+
+    # キーワード
     if query:
-        q = q.filter((Article.title.ilike(f"%{query}%")) | (Article.body_md.ilike(f"%{query}%")))
+        q = q.filter(
+            (Article.title.ilike(f"%{query}%")) |
+            (Article.body_md.ilike(f"%{query}%"))
+        )
+
+    # タグ
     if tag:
-        q = q.join(article_tags).join(Tag).filter(Tag.name == tag)
-    return q.all()
+        q = (
+            q.join(article_tags, article_tags.c.article_id == Article.id)
+             .join(Tag, Tag.id == article_tags.c.tag_id)
+             .filter(Tag.name == tag)
+        )
+
+    # 並び替え
+    if sort == "popular":
+        q = q.order_by(
+            func.coalesce(likes_sq.c.likes_count, 0).desc(),
+            Article.created_at.desc(),
+        )
+    elif sort == "comments":
+        q = q.order_by(
+            func.coalesce(comments_sq.c.comments_count, 0).desc(),
+            Article.created_at.desc(),
+        )
+    else:  # recent
+        q = q.order_by(Article.created_at.desc())
+
+    rows = q.all()
+
+    # Pydantic で返すために、モデルに集計値を一時的に付与
+    articles: list[Article] = []
+    for a, likes_count, comments_count in rows:
+        setattr(a, "likes_count", int(likes_count or 0))
+        setattr(a, "comments_count", int(comments_count or 0))
+        articles.append(a)
+
+    return articles
     
 @router.get("/me", response_model=List[ArticleOut])
 def list_my_articles(
@@ -80,6 +142,24 @@ def get_article(
         raise HTTPException(status_code=404, detail="Article not found")
     if not article.is_published and article.author_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not allowed")
+
+    # 👍 集計値を付与
+    likes_count = (
+        db.query(func.count(Like.user_id))
+        .filter(Like.article_id == article_id)
+        .scalar()
+        or 0
+    )
+    comments_count = (
+        db.query(func.count(CommentModel.id))
+        .filter(CommentModel.article_id == article_id)
+        .scalar()
+        or 0
+    )
+
+    setattr(article, "likes_count", int(likes_count))
+    setattr(article, "comments_count", int(comments_count))
+
     return article
 
 @router.patch("/{article_id}", response_model=ArticleOut)
