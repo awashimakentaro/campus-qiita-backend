@@ -19,6 +19,8 @@ dockerデスクトップのexecではpsql -U postgres -d uni_qiita　と打つ�
 docker exec -it uniqiita-db psql -U postgres -d uni_qiita -c "..."
    
 
+docker logs --tail 50 uniqiita-backend　これエラーを確認できる
+
 
 docker exec
 → すでに起動しているコンテナの中でコマンドを実行する。

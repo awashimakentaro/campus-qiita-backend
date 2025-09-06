@@ -4,7 +4,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import insert
+from sqlalchemy import insert , func
 from pydantic import BaseModel, Field
 
 from app.database import get_db
@@ -17,6 +17,7 @@ from src.models.tag import Tag
 from src.models.article_tag import article_tags
 from src.models.comment import Comment as CommentModel
 from src.models.user import User as UserModel
+from src.models.like import Like
 
 # スキーマ
 from app.schemas.article import ArticleCreate, ArticleUpdate, ArticleOut
@@ -250,3 +251,84 @@ def create_comment(
     return _comment_to_out(c, db)
 
 # 自分の記事一覧（公開/非公開どちらも。is_published を付ければ絞り込み可）
+# ====== いいね ======
+
+class LikeResponse(BaseModel):
+    liked: bool
+    likes_count: int
+
+    
+def _count_likes(db: Session, article_id: int) -> int:
+    return db.query(func.count()).select_from(Like).filter(Like.article_id == article_id).scalar() or 0
+
+@router.post("/{article_id}/likes", response_model=LikeResponse, status_code=status.HTTP_201_CREATED)
+def like_article(
+    article_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    # 既に like 済みか？q
+    exists = (
+        db.query(Like)
+        .filter(Like.article_id == article_id, Like.user_id == current_user.id)
+        .first()
+    )
+    if not exists:
+        db.add(Like(article_id=article_id, user_id=current_user.id))
+        db.commit()
+
+    return LikeResponse(liked=True, likes_count=_count_likes(db, article_id))
+
+@router.delete("/{article_id}/likes", response_model=LikeResponse, status_code=status.HTTP_200_OK)
+def unlike_article(
+    article_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    like = (
+        db.query(Like)
+        .filter(Like.article_id == article_id, Like.user_id == current_user.id)
+        .first()
+    )
+    if like:
+        db.delete(like)
+        db.commit()
+
+    return LikeResponse(liked=False, likes_count=_count_likes(db, article_id))
+
+@router.get("/{article_id}/likes", response_model=LikeResponse)
+def get_like_status(
+    article_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    # 記事存在チェック（任意だが推奨）
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    # 自分がいいね済みか？
+    liked = (
+        db.query(Like)
+        .filter(Like.article_id == article_id, Like.user_id == current_user.id)
+        .first()
+        is not None
+    )
+
+    # 合計数
+    likes_count = (
+        db.query(func.count(Like.user_id))
+        .filter(Like.article_id == article_id)
+        .scalar()
+        or 0
+    )
+
+    return LikeResponse(liked=liked, likes_count=likes_count)

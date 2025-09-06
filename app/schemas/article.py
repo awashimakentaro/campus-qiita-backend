@@ -28,5 +28,6 @@ class ArticleOut(BaseModel):
     is_published: bool
     created_at: datetime
     updated_at: datetime
+    likes_count: int = 0 
 
    
