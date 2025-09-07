@@ -148,14 +148,20 @@ async def firebase_login(request: Request, db: Session = Depends(get_db)):
         # email 非提供のプロバイダもあるが、その場合は別の識別子運用が必要
         raise HTTPException(status_code=400, detail="Email not provided by identity provider")
 
-    # DB upsert
+        # DB upsert
     user = db.query(UserModel).filter(UserModel.email == email).first()
     if not user:
-        user = UserModel(name=name, email=email, avatar=picture)
+        # モデルに存在するフィールドだけ安全にセット
+        user = UserModel(name=name, email=email)
+        # avatar カラムがある環境だけ反映（無ければスキップ）
+        if hasattr(UserModel, "avatar"):
+            setattr(user, "avatar", picture)
         db.add(user)
     else:
         user.name = name
-        user.avatar = picture
+        if hasattr(UserModel, "avatar"):
+            setattr(user, "avatar", picture)
+
     db.commit()
     db.refresh(user)
 
@@ -163,9 +169,14 @@ async def firebase_login(request: Request, db: Session = Depends(get_db)):
     # ※ get_current_user 側で USER:xxx を許容する実装が必要になります
     session_value = f"USER:{user.id}"
     resp = JSONResponse(
-        status_code=200,
-        content={"id": user.id, "name": user.name, "email": user.email, "avatar": user.avatar},
-    )
+    status_code=200,
+    content={
+        "id": user.id,
+        "name": user.name,
+        "email": user.email,
+        "avatar": getattr(user, "avatar", None),  # ← ここを安全に
+    },
+)
     resp.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=session_value,

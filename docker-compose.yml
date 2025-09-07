@@ -32,6 +32,7 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOOGLE_REDIRECT_URI: http://localhost:8000/auth/callback
       ALLOWED_DOMAIN: u-aizu.ac.jp
+      FIREBASE_PROJECT_ID: uniqiiita-dev
       # ▼ 追加：Firebase Admin にサービスアカウントを渡す
       FIREBASE_CREDENTIALS_FILE: /run/secrets/firebase_sa.json
       # （必要なら）フロントのベースURLやセッション名
