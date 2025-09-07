@@ -117,7 +117,7 @@ from src.models.user import User  # ← モデルのパスに合わせて
 
 @router.get("/me")
 def get_me(user: User = Depends(get_current_user)):
-    # フロントで必要な最小のプロパティを返す
+    # フロントで必要な最小のプロパティを返すx
     return {
         "id": user.id,
         "name": user.name,
