@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
     """Upgrade schema."""
 
-    # 既存のインデックス削除（既に削除済みならスキップされる）
+    # 既存のインデックス削除（既に削除済みならスキップされる）え
     try:
         op.drop_index(op.f("ix_articles_body_md_trgm"), table_name="articles")
     except Exception:
