@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, insert
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import get_current_user, is_admin
 from app.utils.markdown import render_and_sanitize
 
 # --- Models ---
@@ -294,22 +294,6 @@ def update_article(
     )
     return _serialize_article(a, likes, comments)
 
-@router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_article(
-    article_id: int,
-    db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user),
-):
-    a = db.query(Article).filter(Article.id == article_id).first()
-    if not a:
-        raise HTTPException(status_code=404, detail="Article not found")
-    if a.author_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not allowed")
-
-    db.delete(a)
-    db.commit()
-    return None
-
 # =======================
 # タグ付け
 # =======================
@@ -462,3 +446,44 @@ def unlike_article(
         db.commit()
 
     return {"liked": False, "likes_count": _count_likes(db, article_id)}
+
+@router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_article(
+    article_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+
+    # 本人 or 管理者 なら削除可
+    if article.author_id != current_user.id and not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    db.delete(article)
+    db.commit()
+    return None
+
+@router.delete("/{article_id}/comments/{comment_id}", status_code=204)
+def delete_comment(
+    article_id: int,
+    comment_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    comment = (
+        db.query(CommentModel)
+        .filter(CommentModel.id == comment_id, CommentModel.article_id == article_id)
+        .first()
+    )
+    if not comment:
+        raise HTTPException(status_code=404, detail="Comment not found")
+
+    # 本人 or 管理者 なら削除可
+    if comment.author_id != current_user.id and not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Not allowed")
+
+    db.delete(comment)
+    db.commit()
+    return None

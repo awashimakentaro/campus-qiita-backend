@@ -51,3 +51,16 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
     # 3) 未認証は常に 401（開発でもダミー返却をしない）
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+
+# --- 管理者判定ヘルパーを追加 ---
+def is_admin(user: User) -> bool:
+    """role が 'admin' なら管理者。将来の拡張で allowlist も考慮できるようにしておく。"""
+    if getattr(user, "role", "") == "admin":
+        return True
+    # もし環境変数で許可メールを与えたい場合（任意）
+    allow = os.getenv("ADMIN_EMAILS", "")
+    if allow:
+        allowed = {e.strip().lower() for e in allow.split(",") if e.strip()}
+        if user.email and user.email.lower() in allowed:
+            return True
+    return False
