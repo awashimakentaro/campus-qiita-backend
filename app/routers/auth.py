@@ -134,11 +134,11 @@ async def firebase_login(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="idToken is required")
 
     try:
-        decoded = firebase_auth.verify_id_token(id_token)
+        decoded = firebase_auth.verify_id_token(id_token, clock_skew_seconds=60)
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Invalid ID token: {str(e)}")
-
     # Firebase payload から情報抽出
+
     uid = decoded.get("uid")
     email = decoded.get("email")
     name = decoded.get("name") or "Unknown"
