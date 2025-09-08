@@ -8,29 +8,63 @@ from src.models.user import User
 
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "session")
 
-def _ensure_user_exists(db: Session, user_id: int | None = None, *, name: str, email: str, avatar: str | None = None):
+def _ensure_user_exists(
+    db: Session,
+    user_id: int | None = None,
+    *,
+    name: str,
+    email: str,
+    avatar: str | None = None,
+) -> User:
+    """
+    Firebase ログイン時などに DB のユーザーを安全に upsert する共通関数。
+    - 既存ユーザーの role は上書きしない
+    - display 情報（name, avatar）は更新する
+    """
     if user_id is not None:
         u = db.query(User).filter(User.id == user_id).first()
         if u:
+            changed = False
             if name and u.name != name:
-                u.name = name
-            db.commit()
-            db.refresh(u)
+                u.name = name; changed = True
+            if avatar is not None and hasattr(u, "avatar") and u.avatar != avatar:
+                u.avatar = avatar; changed = True
+            if changed:
+                db.commit(); db.refresh(u)
             return u
+
         u = User(id=user_id, name=name, email=email, role="student")
+        if avatar is not None and hasattr(u, "avatar"):
+            u.avatar = avatar
         db.add(u); db.commit(); db.refresh(u)
         return u
 
+    # user_id 未指定: email で検索
     u = db.query(User).filter(User.email == email).first()
     if not u:
         u = User(name=name, email=email, role="student")
+        if avatar is not None and hasattr(u, "avatar"):
+            u.avatar = avatar
         db.add(u); db.commit(); db.refresh(u)
+        return u
+
+    # 既存ユーザーは display 情報のみ更新（role は維持）
+    changed = False
+    if name and u.name != name:
+        u.name = name; changed = True
+    if avatar is not None and hasattr(u, "avatar") and u.avatar != avatar:
+        u.avatar = avatar; changed = True
+    if changed:
+        db.commit(); db.refresh(u)
     return u
 
-def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
-    token = request.cookies.get(SESSION_COOKIE_NAME)
 
-    # 1) Firebase セッション（/auth/firebase-login で発行）
+def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
+    """
+    /auth/firebase-login で発行した「USER:{id}」型のセッションクッキーのみを受け付ける。
+    ダミー運用は完全撤去。
+    """
+    token = request.cookies.get(SESSION_COOKIE_NAME)
     if token and isinstance(token, str) and token.startswith("USER:"):
         try:
             user_id = int(token.split(":", 1)[1])
@@ -39,28 +73,30 @@ def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
 
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
+            # 万一消えていたら最低限リカバリ（display 未知）
             user = _ensure_user_exists(db, user_id=user_id, name="User", email=f"user{user_id}@local")
         return user
 
-    # 2) 既存のダミー JWT（古い挙動の互換、必要なら残す / 不要なら消す）
-    if token == "DUMMY_JWT_FOR_LOCAL":
-        user = db.query(User).filter(User.id == 1).first()
-        if not user:
-            user = _ensure_user_exists(db, user_id=1, name="Dummy", email="dummy@u-aizu.ac.jp")
-        return user
-
-    # 3) 未認証は常に 401（開発でもダミー返却をしない）
+    # 未認証は 401
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
 
-# --- 管理者判定ヘルパーを追加 ---
+
+# --- 管理者判定・ガード ---
+
 def is_admin(user: User) -> bool:
-    """role が 'admin' なら管理者。将来の拡張で allowlist も考慮できるようにしておく。"""
+    """role が 'admin' なら管理者。環境変数 ADMIN_EMAILS も許可。"""
     if getattr(user, "role", "") == "admin":
         return True
-    # もし環境変数で許可メールを与えたい場合（任意）
     allow = os.getenv("ADMIN_EMAILS", "")
     if allow:
         allowed = {e.strip().lower() for e in allow.split(",") if e.strip()}
         if user.email and user.email.lower() in allowed:
             return True
     return False
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    """管理者のみ通す依存関数。"""
+    if not is_admin(current_user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    return current_user
