@@ -1,126 +1,102 @@
-# app/routers/auth.pya
+# app/routers/auth.py
+
 import os
-import urllib.parse
-import secrets
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import RedirectResponse
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+
+from app.database import get_db
+from app.dependencies import get_current_user, _ensure_user_exists
+from src.models.user import User as UserModel
+
+# Firebase Admin SDK（初期化は app/core/firebase.py 側で実施）
+try:
+    from firebase_admin import auth as firebase_auth  # type: ignore
+    from app.core.firebase import *  # noqa: F401  初期化の副作用
+    _FIREBASE_AVAILABLE = True
+except Exception:
+    _FIREBASE_AVAILABLE = False
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
-# ====== 設定・定数 ======
-GOOGLE_AUTH_ENDPOINT = "https://accounts.google.com/o/oauth2/v2/auth"
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/auth/callback")
+SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "session")
 
-FRONTEND_BASE = os.getenv("FRONTEND_BASE", "http://localhost:3000")
-SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "session")  # FEからは読み取れないHttpOnly Cookie
-POST_LOGIN_COOKIE = "post_login_redirect"  # ログイン後に戻す先を一時保存
 
-# ====== /auth/login: Google 認可画面へリダイレクト ======
-# 例: GET /auth/login?redirect=/articles/new
-@router.get("/login")
-def start_google_login(redirect: str | None = None):
-    if not GOOGLE_CLIENT_ID:
-        raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not set")
+@router.post("/firebase-login")
+async def firebase_login(request: Request, db: Session = Depends(get_db)):
+    """
+    フロントから { idToken } を受け取り、Firebase で検証。
+    DBにユーザーを upsert し、セッションクッキー（USER:{id}）を発行して 200 を返す。
+    """
+    if not _FIREBASE_AVAILABLE:
+        raise HTTPException(status_code=500, detail="Firebase Admin SDK is not available")
 
-    # CSRF対策のstate（最小限の例。実運用はサーバー側ストア等で照合を）
-    state = secrets.token_urlsafe(16)
+    try:
+        body = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    scopes = [
-        "openid",
-        "email",
-        "profile",
-        "https://www.googleapis.com/auth/userinfo.email",
-        "https://www.googleapis.com/auth/userinfo.profile",
-    ]
+    id_token: Optional[str] = (body or {}).get("idToken")
+    if not id_token:
+        raise HTTPException(status_code=400, detail="idToken is required")
 
-    params = {
-        "client_id": GOOGLE_CLIENT_ID,
-        "redirect_uri": GOOGLE_REDIRECT_URI,
-        "response_type": "code",
-        "scope": " ".join(scopes),
-        "access_type": "online",
-        "include_granted_scopes": "true",
-        "state": state,
-        # "prompt": "consent",  # 毎回同意を出したい場合のみ
-    }
-    url = f"{GOOGLE_AUTH_ENDPOINT}?{urllib.parse.urlencode(params)}"
+    try:
+        # 多少の時刻ズレを許容（最大60秒）
+        decoded = firebase_auth.verify_id_token(id_token, clock_skew_seconds=60)
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid ID token: {str(e)}")
 
-    # 302でGoogleへ
-    resp = RedirectResponse(url, status_code=302)
-    # ローカル開発: secure=False / SameSite=Lax
-    resp.set_cookie(
-        key=POST_LOGIN_COOKIE,
-        value=(redirect or f"{FRONTEND_BASE}/"),
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=60 * 10,  # 10分
-        path="/",
+    # Firebase payload から情報抽出
+    email = decoded.get("email")
+    name = decoded.get("name") or "Unknown"
+    picture = decoded.get("picture")
+    if not email:
+        raise HTTPException(status_code=400, detail="Email not provided by identity provider")
+
+    # DB upsert（role は保持）
+    user = _ensure_user_exists(db, None, name=name, email=email, avatar=picture)
+
+    # セッションクッキー発行
+    session_value = f"USER:{user.id}"
+    resp = JSONResponse(
+        status_code=200,
+        content={
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "avatar": getattr(user, "avatar", None),
+            "role": getattr(user, "role", "student"),
+        },
     )
-    resp.set_cookie(
-        key="oauth_state",
-        value=state,
-        httponly=True,
-        secure=False,
-        samesite="lax",
-        max_age=60 * 10,
-        path="/",
-    )
-    return resp
-
-
-# ====== /auth/callback: Google から戻る場所 ======
-# ここで code→Googleトークン交換→ユーザー情報取得→自前JWT発行→Cookieにセット→FEへ302
-@router.get("/callback")
-async def oauth_callback(request: Request, code: str | None = None, state: str | None = None):
-    if not code:
-        raise HTTPException(status_code=400, detail="Missing code")
-
-    # TODO: ここで 'state' の照合を行う（Cookie or サーバー側ストアの値と一致するか）
-    # state_cookie = request.cookies.get("oauth_state")
-
-    # TODO: ここで 'code' を使って Google のトークンに交換し、userinfo を取得する
-    # 例:
-    # token = await exchange_code_for_token(code, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI)
-    # userinfo = await fetch_google_userinfo(token["access_token"])
-    # そして学内ドメイン（@u-aizu.ac.jp 等）チェック → 自前JWT作成
-
-    # まずはローカル動作確認用のダミーJWTを使用（後で上の実装に差し替え）
-    jwt_token = "DUMMY_JWT_FOR_LOCAL"
-
-    # 戻り先URL（/auth/login でCookieに入れた値を優先）
-    redirect_to = request.cookies.get(POST_LOGIN_COOKIE) or FRONTEND_BASE
-
-    # FEへ302しつつ、セッションクッキーをセット
-    resp = RedirectResponse(url=redirect_to, status_code=302)
     resp.set_cookie(
         key=SESSION_COOKIE_NAME,
-        value=jwt_token,
+        value=session_value,
         httponly=True,
-        secure=False,   # 本番(https)では True
-        samesite="lax", # 本番でクロスサイトPOST等が必要なら "none" を検討（secure=True必須）
+        secure=False,   # 本番は True（HTTPS 前提）
+        samesite="lax", # 本番でクロスサイト必要なら "none" + secure=True
         max_age=60 * 60 * 24 * 7,  # 7日
         path="/",
     )
-
-    # 一度きりのCookieは削除
-    resp.delete_cookie(POST_LOGIN_COOKIE, path="/")
-    resp.delete_cookie("oauth_state", path="/")
     return resp
 
-# app/routers/auth.py（末尾に追加）
-from fastapi import Depends
-from sqlalchemy.orm import Session
-from app.dependencies import get_current_user  # ← あなたのパスに合わせて
-from src.models.user import User  # ← モデルのパスに合わせて
+
+@router.post("/logout")
+def logout():
+    """セッションクッキーを削除。"""
+    resp = JSONResponse({"ok": True})
+    resp.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    return resp
+
 
 @router.get("/me")
-def get_me(user: User = Depends(get_current_user)):
-    # フロントで必要な最小のプロパティを返す
+def get_me(user: UserModel = Depends(get_current_user)):
+    """現在ログイン中のユーザー情報を返す。"""
     return {
         "id": user.id,
         "name": user.name,
         "email": user.email,
+        "avatar": getattr(user, "avatar", None),
         "role": getattr(user, "role", "student"),
     }

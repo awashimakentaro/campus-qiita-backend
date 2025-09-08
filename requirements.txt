@@ -9,6 +9,7 @@ bleach
 Markdown
 bleach
 alembic
+firebase-admin==6.5.0
 #何をする？
 #
 #アプリが必要とするPythonパッケージを明示。
