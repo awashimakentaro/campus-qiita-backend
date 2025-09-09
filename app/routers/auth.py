@@ -74,8 +74,8 @@ async def firebase_login(request: Request, db: Session = Depends(get_db)):
         key=SESSION_COOKIE_NAME,
         value=session_value,
         httponly=True,
-        secure=False,   # 本番は True（HTTPS 前提）
-        samesite="lax", # 本番でクロスサイト必要なら "none" + secure=True
+        secure=True,   # 本番は True（HTTPS 前提）
+        samesite="none", # 本番でクロスサイト必要なら "none" + secure=True
         max_age=60 * 60 * 24 * 7,  # 7日
         path="/",
     )
