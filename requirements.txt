@@ -10,8 +10,11 @@ Markdown
 bleach
 alembic
 firebase-admin==6.5.0
-#何をする？
-#
+psycopg2-binary>=2.9
+
+
+
+
 #アプリが必要とするPythonパッケージを明示。
 #覚えること：「requirements.txt = ライブラリ一覧表」
 #Dockerfile がこれを読んで pip install → 再現性の高い環境が作れる。これはfastapiのライブラリをダウンロードするコマンドpsycopg2-binary>=2.9
