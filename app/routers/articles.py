@@ -126,7 +126,7 @@ def create_article(
 @router.get("/", response_model=List[dict])
 def list_articles(
     query: str | None = Query(None, description="キーワード全文検索"),
-    tag: str | None = Query(None, description="タグ名で絞り込み"),
+    tag: List[str] | None = Query(None, description="タグ名（複数可）"),
     sort: Literal["popular", "recent", "comments"] = Query("popular", description="並び替え"),
     db: Session = Depends(get_db),
 ):
@@ -169,7 +169,7 @@ def list_articles(
         q = (
             q.join(article_tags, article_tags.c.article_id == Article.id)
              .join(Tag, Tag.id == article_tags.c.tag_id)
-             .filter(Tag.name == tag)
+             .filter(Tag.name.in_(tag))
         )
 
     if sort == "popular":
