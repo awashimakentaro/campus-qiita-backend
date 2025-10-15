@@ -20,21 +20,21 @@ from src.models.article_tag import article_tags
 from src.models.comment import Comment as CommentModel
 from src.models.like import Like
 
-router = APIRouter(prefix="/v1/articles", tags=["articles"])
+# スラ自動リダイレクト(307)を無効化
+router = APIRouter(
+    prefix="/v1/articles",
+    tags=["articles"],
+    redirect_slashes=False,
+)
 
 # ======================================================
-# 共通: 手動シリアライザ（author.avatar を常に含める）
+# 共通: シリアライザ
 # ======================================================
 
 def _serialize_user(u: Optional[UserModel]) -> Optional[dict]:
     if not u:
         return None
-    return {
-        "id": u.id,
-        "name": u.name,
-        "email": u.email,
-        "avatar": getattr(u, "avatar", None),
-    }
+    return {"id": u.id, "name": u.name, "email": u.email, "avatar": getattr(u, "avatar", None)}
 
 def _serialize_article(a: Article, likes_count: Optional[int] = None, comments_count: Optional[int] = None) -> dict:
     return {
@@ -75,20 +75,15 @@ def _serialize_comment(c: CommentModel, db: Session) -> dict:
     }
 
 def _count_likes(db: Session, article_id: int) -> int:
-    return (
-        db.query(func.count(Like.user_id))
-        .filter(Like.article_id == article_id)
-        .scalar()
-        or 0
-    )
+    return (db.query(func.count(Like.user_id)).filter(Like.article_id == article_id).scalar() or 0)
 
 # =======================
-# 記事: 作成（author 同梱）
+# 記事: 作成
 # =======================
 
 @router.post("/", response_model=dict)
 def create_article(
-    data: Dict[str, Any] = Body(...),  # { title, body_md, is_published?, body_html? }
+    data: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
@@ -110,17 +105,20 @@ def create_article(
     db.add(article)
     db.commit()
 
-    # author を同梱して返す
-    a = (
-        db.query(Article)
-        .options(joinedload(Article.author))
-        .filter(Article.id == article.id)
-        .first()
-    )
+    a = db.query(Article).options(joinedload(Article.author)).filter(Article.id == article.id).first()
     return _serialize_article(a or article)
 
+# スラ無しでも作成OK（スキーマ非表示）
+@router.post("", response_model=dict, include_in_schema=False)
+def create_article_no_slash(
+    data: Dict[str, Any] = Body(...),
+    db: Session = Depends(get_db),
+    current_user: UserModel = Depends(get_current_user),
+):
+    return create_article(data=data, db=db, current_user=current_user)
+
 # =======================
-# 記事: 一覧（集計 + author 同梱）
+# 記事: 一覧
 # =======================
 
 @router.get("/", response_model=List[dict])
@@ -132,18 +130,12 @@ def list_articles(
 ):
     # いいね数 / コメント数のサブクエリ
     likes_sq = (
-        db.query(
-            Like.article_id.label("article_id"),
-            func.count(Like.user_id).label("likes_count"),
-        )
+        db.query(Like.article_id.label("article_id"), func.count(Like.user_id).label("likes_count"))
         .group_by(Like.article_id)
         .subquery()
     )
     comments_sq = (
-        db.query(
-            CommentModel.article_id.label("article_id"),
-            func.count(CommentModel.id).label("comments_count"),
-        )
+        db.query(CommentModel.article_id.label("article_id"), func.count(CommentModel.id).label("comments_count"))
         .group_by(CommentModel.article_id)
         .subquery()
     )
@@ -173,23 +165,27 @@ def list_articles(
         )
 
     if sort == "popular":
-        q = q.order_by(
-            func.coalesce(likes_sq.c.likes_count, 0).desc(),
-            Article.created_at.desc(),
-        )
+        q = q.order_by(func.coalesce(likes_sq.c.likes_count, 0).desc(), Article.created_at.desc())
     elif sort == "comments":
-        q = q.order_by(
-            func.coalesce(comments_sq.c.comments_count, 0).desc(),
-            Article.created_at.desc(),
-        )
+        q = q.order_by(func.coalesce(comments_sq.c.comments_count, 0).desc(), Article.created_at.desc())
     else:
         q = q.order_by(Article.created_at.desc())
 
     rows = q.all()
     return [_serialize_article(a, likes_count, comments_count) for a, likes_count, comments_count in rows]
 
+# スラ無しでも一覧OK（スキーマ非表示）
+@router.get("", response_model=List[dict], include_in_schema=False)
+def list_articles_no_slash(
+    query: str | None = Query(None),
+    tag: List[str] | None = Query(None),
+    sort: Literal["popular", "recent", "comments"] = Query("popular"),
+    db: Session = Depends(get_db),
+):
+    return list_articles(query=query, tag=tag, sort=sort, db=db)
+
 # =======================
-# 記事: 自分の投稿（author 同梱）
+# 記事: 自分の投稿
 # =======================
 
 @router.get("/me", response_model=List[dict])
@@ -198,29 +194,20 @@ def list_my_articles(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
-    q = (
-        db.query(Article)
-        .options(joinedload(Article.author))
-        .filter(Article.author_id == current_user.id)
-    )
+    q = db.query(Article).options(joinedload(Article.author)).filter(Article.author_id == current_user.id)
     if is_published is not None:
         q = q.filter(Article.is_published == is_published)
-
     rows = q.order_by(Article.created_at.desc()).all()
-    # likes/comments を都度計算するならここで集計（必要なら最適化OK）
-    out = []
+
+    out: List[dict] = []
     for a in rows:
         likes = _count_likes(db, a.id)
-        comments = (
-            db.query(func.count(CommentModel.id))
-            .filter(CommentModel.article_id == a.id)
-            .scalar() or 0
-        )
+        comments = (db.query(func.count(CommentModel.id)).filter(CommentModel.article_id == a.id).scalar() or 0)
         out.append(_serialize_article(a, likes, comments))
     return out
 
 # =======================
-# 記事: 取得（author + 集計）
+# 記事: 取得
 # =======================
 
 @router.get("/{article_id}", response_model=dict)
@@ -229,34 +216,24 @@ def get_article(
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
-    a = (
-        db.query(Article)
-        .options(joinedload(Article.author))
-        .filter(Article.id == article_id)
-        .first()
-    )
+    a = db.query(Article).options(joinedload(Article.author)).filter(Article.id == article_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Article not found")
-
     if not a.is_published and a.author_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not allowed")
 
     likes = _count_likes(db, article_id)
-    comments = (
-        db.query(func.count(CommentModel.id))
-        .filter(CommentModel.article_id == article_id)
-        .scalar() or 0
-    )
+    comments = (db.query(func.count(CommentModel.id)).filter(CommentModel.article_id == article_id).scalar() or 0)
     return _serialize_article(a, likes, comments)
 
 # =======================
-# 記事: 更新 / 削除（author 同梱で返却）
+# 記事: 更新 / 削除
 # =======================
 
 @router.patch("/{article_id}", response_model=dict)
 def update_article(
     article_id: int,
-    data: Dict[str, Any] = Body(...),  # { title?, body_md?, is_published? }
+    data: Dict[str, Any] = Body(...),
     db: Session = Depends(get_db),
     current_user: UserModel = Depends(get_current_user),
 ):
@@ -280,25 +257,32 @@ def update_article(
 
     db.commit()
 
-    a = (
-        db.query(Article)
-        .options(joinedload(Article.author))
-        .filter(Article.id == article_id)
-        .first()
-    )
+    a = db.query(Article).options(joinedload(Article.author)).filter(Article.id == article_id).first()
     likes = _count_likes(db, article_id)
-    comments = (
-        db.query(func.count(CommentModel.id))
-        .filter(CommentModel.article_id == article_id)
-        .scalar() or 0
-    )
+    comments = (db.query(func.count(CommentModel.id)).filter(CommentModel.article_id == article_id).scalar() or 0)
     return _serialize_article(a, likes, comments)
 
+@router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_article(
+    article_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    article = db.query(Article).filter(Article.id == article_id).first()
+    if not article:
+        raise HTTPException(status_code=404, detail="Article not found")
+    if article.author_id != current_user.id and not is_admin(current_user):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    db.delete(article)
+    db.commit()
+    return None
+
 # =======================
-# タグ付け
+# タグ付け / コメント / いいね
 # =======================
 
-from app.schemas.article_tag import ArticleTagAttach  # 既存スキーマを利用
+from app.schemas.article_tag import ArticleTagAttach
+from pydantic import BaseModel, Field
 
 @router.post("/{article_id}/tags", status_code=status.HTTP_204_NO_CONTENT)
 def attach_tag_to_article(
@@ -323,12 +307,6 @@ def attach_tag_to_article(
     except Exception:
         db.rollback()
     return None
-
-# =======================
-# コメント
-# =======================
-
-from pydantic import BaseModel, Field  # ここで使う最小限を再importしてもOK
 
 class CommentCreate(BaseModel):
     body: str = Field(..., min_length=1, max_length=5000)
@@ -380,12 +358,7 @@ def create_comment(
     db.add(c)
     db.commit()
     db.refresh(c)
-
     return _serialize_comment(c, db)
-
-# =======================
-# いいね
-# =======================
 
 @router.get("/{article_id}/likes", response_model=dict)
 def get_like_status(
@@ -396,13 +369,7 @@ def get_like_status(
     a = db.query(Article).filter(Article.id == article_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Article not found")
-
-    liked = (
-        db.query(Like)
-        .filter(Like.article_id == article_id, Like.user_id == current_user.id)
-        .first()
-        is not None
-    )
+    liked = (db.query(Like).filter(Like.article_id == article_id, Like.user_id == current_user.id).first() is not None)
     return {"liked": liked, "likes_count": _count_likes(db, article_id)}
 
 @router.post("/{article_id}/likes", response_model=dict, status_code=status.HTTP_201_CREATED)
@@ -415,15 +382,10 @@ def like_article(
     if not a:
         raise HTTPException(status_code=404, detail="Article not found")
 
-    exists = (
-        db.query(Like)
-        .filter(Like.article_id == article_id, Like.user_id == current_user.id)
-        .first()
-    )
+    exists = db.query(Like).filter(Like.article_id == article_id, Like.user_id == current_user.id).first()
     if not exists:
         db.add(Like(article_id=article_id, user_id=current_user.id))
         db.commit()
-
     return {"liked": True, "likes_count": _count_likes(db, article_id)}
 
 @router.delete("/{article_id}/likes", response_model=dict)
@@ -436,15 +398,10 @@ def unlike_article(
     if not a:
         raise HTTPException(status_code=404, detail="Article not found")
 
-    like = (
-        db.query(Like)
-        .filter(Like.article_id == article_id, Like.user_id == current_user.id)
-        .first()
-    )
+    like = db.query(Like).filter(Like.article_id == article_id, Like.user_id == current_user.id).first()
     if like:
         db.delete(like)
         db.commit()
-
     return {"liked": False, "likes_count": _count_likes(db, article_id)}
 
 @router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -456,34 +413,8 @@ def delete_article(
     article = db.query(Article).filter(Article.id == article_id).first()
     if not article:
         raise HTTPException(status_code=404, detail="Article not found")
-
-    # 本人 or 管理者 なら削除可
     if article.author_id != current_user.id and not is_admin(current_user):
         raise HTTPException(status_code=403, detail="Not allowed")
-
     db.delete(article)
-    db.commit()
-    return None
-
-@router.delete("/{article_id}/comments/{comment_id}", status_code=204)
-def delete_comment(
-    article_id: int,
-    comment_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
-):
-    comment = (
-        db.query(CommentModel)
-        .filter(CommentModel.id == comment_id, CommentModel.article_id == article_id)
-        .first()
-    )
-    if not comment:
-        raise HTTPException(status_code=404, detail="Comment not found")
-
-    # 本人 or 管理者 なら削除可
-    if comment.author_id != current_user.id and not is_admin(current_user):
-        raise HTTPException(status_code=403, detail="Not allowed")
-
-    db.delete(comment)
     db.commit()
     return None
