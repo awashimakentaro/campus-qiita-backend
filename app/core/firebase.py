@@ -38,13 +38,19 @@ def _pick_cred_file(path: str) -> Optional[str]:
     return None
 
 
+DEFAULT_CREDENTIAL_PATHS = (
+    './secrets/firebase-adminsdk.json',
+    '/secrets/firebase-adminsdk.json',
+)
+
 def _resolve_credentials_path() -> Optional[str]:
-    envs = [
+    candidates = [
         os.getenv('FIREBASE_CREDENTIALS_FILE'),
         os.getenv('GOOGLE_APPLICATION_CREDENTIALS'),
         os.getenv('FIREBASE_CREDENTIALS'),
+        *DEFAULT_CREDENTIAL_PATHS,
     ]
-    for raw in envs:
+    for raw in candidates:
         if not raw:
             continue
         raw = raw.strip()
@@ -52,9 +58,9 @@ def _resolve_credentials_path() -> Optional[str]:
             continue
         picked = _pick_cred_file(raw)
         if picked:
-            logger.info("Firebase credentials file resolved: %s", picked)
+            logger.info('Firebase credentials file resolved: %s', picked)
             return picked
-        logger.warning("Firebase credentials path not usable: %s", raw)
+        logger.warning('Firebase credentials path not usable: %s', raw)
     return None
 
 
