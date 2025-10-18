@@ -2,7 +2,10 @@
 import os
 import json
 import base64
+import logging
 from typing import Optional, Tuple, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 _FBA_READY = False
 firebase_app = None
@@ -17,6 +20,9 @@ except Exception:
 
 def _pick_cred_file(path: str) -> Optional[str]:
     """Return a credential file path when the input is a file or directory."""
+    if not path:
+        return None
+    path = path.strip()
     if not path:
         return None
     path = os.path.abspath(path)
@@ -41,9 +47,14 @@ def _resolve_credentials_path() -> Optional[str]:
     for raw in envs:
         if not raw:
             continue
+        raw = raw.strip()
+        if not raw:
+            continue
         picked = _pick_cred_file(raw)
         if picked:
+            logger.info("Firebase credentials file resolved: %s", picked)
             return picked
+        logger.warning("Firebase credentials path not usable: %s", raw)
     return None
 
 
@@ -66,16 +77,21 @@ def _try_parse_json(raw: str) -> Optional[Dict[str, Any]]:
 
 def _resolve_inline_credentials() -> Optional[Dict[str, Any]]:
     candidates = [
-        os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON'),
-        os.getenv('FIREBASE_SERVICE_ACCOUNT'),
-        os.getenv('FIREBASE_ADMIN_CREDENTIAL_JSON'),
+        ("FIREBASE_SERVICE_ACCOUNT_JSON", os.getenv('FIREBASE_SERVICE_ACCOUNT_JSON')),
+        ("FIREBASE_SERVICE_ACCOUNT", os.getenv('FIREBASE_SERVICE_ACCOUNT')),
+        ("FIREBASE_ADMIN_CREDENTIAL_JSON", os.getenv('FIREBASE_ADMIN_CREDENTIAL_JSON')),
     ]
-    for raw in candidates:
+    for name, raw in candidates:
+        if not raw:
+            continue
+        raw = raw.strip()
         if not raw:
             continue
         parsed = _try_parse_json(raw)
         if parsed:
+            logger.info("Firebase inline credentials resolved from %s", name)
             return parsed
+        logger.warning("Firebase inline credentials invalid in %s", name)
     return None
 
 
@@ -106,6 +122,7 @@ def _initialize(force: bool = False) -> None:
 
     cred_path, cred_inline = _resolve_credentials_source()
     if not cred_path and cred_inline is None:
+        logger.error('Firebase credentials not found in environment')
         _FBA_READY = False
         return
 
@@ -115,6 +132,7 @@ def _initialize(force: bool = False) -> None:
             with open(cred_path, 'r', encoding='utf-8') as f:
                 json.load(f)
         except Exception:
+            logger.exception('Failed to read Firebase credential file: %s', cred_path)
             _FBA_READY = False
             return
         source = cred_path
@@ -128,7 +146,9 @@ def _initialize(force: bool = False) -> None:
         opts = {'projectId': project_id} if project_id else None
         firebase_app = firebase_admin.initialize_app(cred, opts) if opts else firebase_admin.initialize_app(cred)
         _FBA_READY = True
+        logger.info('Firebase Admin SDK initialized successfully')
     except Exception:
+        logger.exception('Failed to initialize Firebase Admin SDK')
         _FBA_READY = False
 
 
