@@ -12,11 +12,13 @@ from app.dependencies import get_current_user, _ensure_user_exists
 from src.models.user import User as UserModel
 
 # Firebase Admin SDK（初期化は app/core/firebase.py 側で実施）
+from app.core.firebase import ensure_firebase_ready
+
 try:
     from firebase_admin import auth as firebase_auth  # type: ignore
-    from app.core.firebase import *  # noqa: F401  初期化の副作用
     _FIREBASE_AVAILABLE = True
 except Exception:
+    firebase_auth = None  # type: ignore
     _FIREBASE_AVAILABLE = False
 
 router = APIRouter(prefix="/auth", tags=["auth"], redirect_slashes=False)
@@ -33,6 +35,9 @@ async def firebase_login(request: Request, db: Session = Depends(get_db)):
     """
     if not _FIREBASE_AVAILABLE:
         raise HTTPException(status_code=500, detail="Firebase Admin SDK is not available")
+
+    if not ensure_firebase_ready():
+        raise HTTPException(status_code=500, detail="Firebase credentials are not configured")
 
     try:
         body = await request.json()

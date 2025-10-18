@@ -78,7 +78,7 @@ FIREBASE_PROJECT_ID=uniqiiita-dev
 FIREBASE_CREDENTIALS_FILE=./secrets/firebase-adminsdk.json
 
 # ========================
-# 本番環境 (Railway + Neon)
+# 本番環境 (Railway + Neon 現在はRendar)
 # ========================
 # Railway / Vercel の環境変数ダッシュボードに設定
 # DATABASE_URL=postgresql+psycopg2://<user>:<password>@<neon-host>/<dbname>?sslmode=require
