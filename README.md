@@ -119,6 +119,9 @@ docker compose exec backend alembic upgrade head
 ---
 
 ## 個人的なメモ
+	•  frontのcampus-qiita-frontend/next.config.mjsにて	https://campus-qiita-backend.onrender.com/:path*',
+    http://localhost:8000/:path*
+	の切り替えで表示されるdbを切り替え
 
 Readmeの書き方
 https://qiita.com/shun198/items/c983c713452c041ef787
