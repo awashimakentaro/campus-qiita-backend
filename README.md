@@ -127,7 +127,7 @@ jetとは　https://qiita.com/arara4510/items/55fc005f8f676f40afcb
 大学版キータ(FastAPI)の開発
 
 dockerの起動方法
--docker compose up -d これで起動
+- こdocker compose up -dれで起動
 -docker compose config 構文ミスがないかバリデーション　　configuration(設定) validation(検証)
 -docker compose ps 状態確認
 -docker compose ps コンテナがちゃんと立ち上がっているのかを一覧で確認

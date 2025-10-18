@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, insert
 
 from app.database import get_db
-from app.dependencies import get_current_user, is_admin
+from app.dependencies import get_current_user, get_current_user_optional, is_admin
 from app.utils.markdown import render_and_sanitize
 
 # --- Models ---
@@ -189,6 +189,7 @@ def list_articles_no_slash(
 # =======================
 
 @router.get("/me", response_model=List[dict])
+@router.get("/me/", response_model=List[dict], include_in_schema=False)
 def list_my_articles(
     is_published: bool | None = None,
     db: Session = Depends(get_db),
@@ -211,16 +212,21 @@ def list_my_articles(
 # =======================
 
 @router.get("/{article_id}", response_model=dict)
+@router.get("/{article_id}/", response_model=dict, include_in_schema=False)
 def get_article(
     article_id: int,
     db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user),
+    current_user: Optional[UserModel] = Depends(get_current_user_optional),
 ):
     a = db.query(Article).options(joinedload(Article.author)).filter(Article.id == article_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Article not found")
-    if not a.is_published and a.author_id != current_user.id:
-        raise HTTPException(status_code=403, detail="Not allowed")
+
+    if not a.is_published:
+        if current_user is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+        if a.author_id != current_user.id and not is_admin(current_user):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not allowed")
 
     likes = _count_likes(db, article_id)
     comments = (db.query(func.count(CommentModel.id)).filter(CommentModel.article_id == article_id).scalar() or 0)
@@ -231,6 +237,7 @@ def get_article(
 # =======================
 
 @router.patch("/{article_id}", response_model=dict)
+@router.patch("/{article_id}/", response_model=dict, include_in_schema=False)
 def update_article(
     article_id: int,
     data: Dict[str, Any] = Body(...),
@@ -263,6 +270,7 @@ def update_article(
     return _serialize_article(a, likes, comments)
 
 @router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{article_id}/", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 def delete_article(
     article_id: int,
     db: Session = Depends(get_db),
@@ -285,6 +293,7 @@ from app.schemas.article_tag import ArticleTagAttach
 from pydantic import BaseModel, Field
 
 @router.post("/{article_id}/tags", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/{article_id}/tags/", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 def attach_tag_to_article(
     article_id: int,
     payload: ArticleTagAttach,
@@ -312,10 +321,10 @@ class CommentCreate(BaseModel):
     body: str = Field(..., min_length=1, max_length=5000)
 
 @router.get("/{article_id}/comments", response_model=List[dict])
+@router.get("/{article_id}/comments/", response_model=List[dict], include_in_schema=False)
 def list_comments(
     article_id: int,
     db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user),
 ):
     comments = (
         db.query(CommentModel)
@@ -326,6 +335,7 @@ def list_comments(
     return [_serialize_comment(c, db) for c in comments]
 
 @router.post("/{article_id}/comments", response_model=dict, status_code=status.HTTP_201_CREATED)
+@router.post("/{article_id}/comments/", response_model=dict, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def create_comment(
     article_id: int,
     payload: CommentCreate,
@@ -361,18 +371,28 @@ def create_comment(
     return _serialize_comment(c, db)
 
 @router.get("/{article_id}/likes", response_model=dict)
+@router.get("/{article_id}/likes/", response_model=dict, include_in_schema=False)
 def get_like_status(
     article_id: int,
     db: Session = Depends(get_db),
-    current_user: UserModel = Depends(get_current_user),
+    current_user: Optional[UserModel] = Depends(get_current_user_optional),
 ):
     a = db.query(Article).filter(Article.id == article_id).first()
     if not a:
         raise HTTPException(status_code=404, detail="Article not found")
-    liked = (db.query(Like).filter(Like.article_id == article_id, Like.user_id == current_user.id).first() is not None)
+
+    liked = False
+    if current_user is not None:
+        liked = (
+            db.query(Like)
+            .filter(Like.article_id == article_id, Like.user_id == current_user.id)
+            .first()
+            is not None
+        )
     return {"liked": liked, "likes_count": _count_likes(db, article_id)}
 
 @router.post("/{article_id}/likes", response_model=dict, status_code=status.HTTP_201_CREATED)
+@router.post("/{article_id}/likes/", response_model=dict, status_code=status.HTTP_201_CREATED, include_in_schema=False)
 def like_article(
     article_id: int,
     db: Session = Depends(get_db),
@@ -389,6 +409,7 @@ def like_article(
     return {"liked": True, "likes_count": _count_likes(db, article_id)}
 
 @router.delete("/{article_id}/likes", response_model=dict)
+@router.delete("/{article_id}/likes/", response_model=dict, include_in_schema=False)
 def unlike_article(
     article_id: int,
     db: Session = Depends(get_db),
@@ -405,6 +426,7 @@ def unlike_article(
     return {"liked": False, "likes_count": _count_likes(db, article_id)}
 
 @router.delete("/{article_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{article_id}/", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 def delete_article(
     article_id: int,
     db: Session = Depends(get_db),

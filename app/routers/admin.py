@@ -11,7 +11,7 @@ from src.models.comment import Comment
 from src.models.like import Like
 from src.models.article_tag import article_tags
 
-router = APIRouter(prefix="/v1/admin", tags=["admin"])
+router = APIRouter(prefix="/v1/admin", tags=["admin"], redirect_slashes=False)
 
 def _purge_user_data(db: Session, user_id: int) -> int:
     """
@@ -40,6 +40,7 @@ def _purge_user_data(db: Session, user_id: int) -> int:
 
 
 @router.delete("/purge/by-email", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/purge/by-email/", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 def purge_by_email(
     email: str = Query(..., description="削除対象ユーザーのメールアドレス"),
     db: Session = Depends(get_db),
@@ -56,6 +57,7 @@ def purge_by_email(
 
 
 @router.delete("/purge/dummy", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/purge/dummy/", status_code=status.HTTP_204_NO_CONTENT, include_in_schema=False)
 def purge_dummy(
     db: Session = Depends(get_db),
     admin=Depends(require_admin),

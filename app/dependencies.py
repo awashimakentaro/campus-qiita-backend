@@ -59,26 +59,41 @@ def _ensure_user_exists(
     return u
 
 
+def _resolve_user_from_cookie(request: Request, db: Session) -> User | None:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token or not isinstance(token, str) or not token.startswith("USER:"):
+        return None
+
+    try:
+        user_id = int(token.split(":", 1)[1])
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token")
+
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        # 万一消えていたら最低限リカバリ（display 未知）
+        user = _ensure_user_exists(db, user_id=user_id, name="User", email=f"user{user_id}@local")
+    return user
+
+
 def get_current_user(request: Request, db: Session = Depends(get_db)) -> User:
     """
     /auth/firebase-login で発行した「USER:{id}」型のセッションクッキーのみを受け付ける。
     ダミー運用は完全撤去。
     """
-    token = request.cookies.get(SESSION_COOKIE_NAME)
-    if token and isinstance(token, str) and token.startswith("USER:"):
-        try:
-            user_id = int(token.split(":", 1)[1])
-        except Exception:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid session token")
+    user = _resolve_user_from_cookie(request, db)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return user
 
-        user = db.query(User).filter(User.id == user_id).first()
-        if not user:
-            # 万一消えていたら最低限リカバリ（display 未知）
-            user = _ensure_user_exists(db, user_id=user_id, name="User", email=f"user{user_id}@local")
-        return user
 
-    # 未認証は 401
-    raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+def get_current_user_optional(request: Request, db: Session = Depends(get_db)) -> User | None:
+    """セッションが無ければ None を返す。"""
+    try:
+        return _resolve_user_from_cookie(request, db)
+    except HTTPException:
+        # 不正なトークンは 401 をそのまま伝搬
+        raise
 
 
 # --- 管理者判定・ガード ---

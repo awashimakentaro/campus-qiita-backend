@@ -19,12 +19,13 @@ try:
 except Exception:
     _FIREBASE_AVAILABLE = False
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"], redirect_slashes=False)
 
 SESSION_COOKIE_NAME = os.getenv("SESSION_COOKIE_NAME", "session")
 
 
 @router.post("/firebase-login")
+@router.post("/firebase-login/", include_in_schema=False)
 async def firebase_login(request: Request, db: Session = Depends(get_db)):
     """
     フロントから { idToken } を受け取り、Firebase で検証。
@@ -38,9 +39,10 @@ async def firebase_login(request: Request, db: Session = Depends(get_db)):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid JSON")
 
-    id_token: Optional[str] = (body or {}).get("idToken")
+    payload = body or {}
+    id_token: Optional[str] = payload.get("idToken") or payload.get("id_token")
     if not id_token:
-        raise HTTPException(status_code=400, detail="idToken is required")
+        raise HTTPException(status_code=400, detail="idToken (or id_token) is required")
 
     try:
         # 多少の時刻ズレを許容（最大60秒）
@@ -83,6 +85,7 @@ async def firebase_login(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/logout")
+@router.post("/logout/", include_in_schema=False)
 def logout():
     """セッションクッキーを削除。"""
     resp = JSONResponse({"ok": True})
@@ -91,6 +94,7 @@ def logout():
 
 
 @router.get("/me")
+@router.get("/me/", include_in_schema=False)
 def get_me(user: UserModel = Depends(get_current_user)):
     """現在ログイン中のユーザー情報を返す。"""
     return {
