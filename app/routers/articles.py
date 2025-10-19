@@ -121,10 +121,27 @@ def create_article_no_slash(
 # 記事: 一覧
 # =======================
 
+def _normalize_tags(raw: Optional[List[str]]) -> List[str]:
+    if not raw:
+        return []
+
+    normalized: List[str] = []
+    seen = set()
+    for value in raw:
+        if not value:
+            continue
+        candidates = [piece.strip() for piece in value.split(",") if piece.strip()]
+        for name in candidates:
+            if name not in seen:
+                seen.add(name)
+                normalized.append(name)
+    return normalized
+
+
 @router.get("/", response_model=List[dict])
 def list_articles(
     query: str | None = Query(None, description="キーワード全文検索"),
-    tag: str | None = Query(None, description="タグ名で絞り込み"),
+    tag: List[str] | None = Query(None, description="タグ名で絞り込み"),
     sort: Literal["popular", "recent", "comments"] = Query("popular", description="並び替え"),
     db: Session = Depends(get_db),
 ):
@@ -157,12 +174,16 @@ def list_articles(
         like = f"%{query}%"
         q = q.filter((Article.title.ilike(like)) | (Article.body_md.ilike(like)))
 
-    if tag:
-        q = (
-            q.join(article_tags, article_tags.c.article_id == Article.id)
-             .join(Tag, Tag.id == article_tags.c.tag_id)
-             .filter(Tag.name == tag)
+    tags = _normalize_tags(tag)
+    if tags:
+        tags_subquery = (
+            db.query(article_tags.c.article_id)
+            .join(Tag, Tag.id == article_tags.c.tag_id)
+            .filter(Tag.name.in_(tags))
+            .group_by(article_tags.c.article_id)
+            .having(func.count(func.distinct(Tag.name)) >= len(tags))
         )
+        q = q.filter(Article.id.in_(tags_subquery))
 
     if sort == "popular":
         q = q.order_by(func.coalesce(likes_sq.c.likes_count, 0).desc(), Article.created_at.desc())

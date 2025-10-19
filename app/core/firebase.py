@@ -41,6 +41,9 @@ def _pick_cred_file(path: str) -> Optional[str]:
 DEFAULT_CREDENTIAL_PATHS = (
     './secrets/firebase-adminsdk.json',
     '/secrets/firebase-adminsdk.json',
+    '/etc/secrets/firebase-adminsdk.json',
+    '/etc/secrets/firebase_sa.json',
+    '/run/secrets/firebase-adminsdk.json',
 )
 
 def _resolve_credentials_path() -> Optional[str]:

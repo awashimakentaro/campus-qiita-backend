@@ -83,7 +83,7 @@ FIREBASE_CREDENTIALS_FILE=./secrets/firebase-adminsdk.json
 
 ### Firebase 資格情報の配置
 - サービスアカウント JSON はファイルとして管理し、アプリからは `FIREBASE_CREDENTIALS_FILE` で参照します。
-- デフォルトの探索順は `FIREBASE_CREDENTIALS_FILE` → `GOOGLE_APPLICATION_CREDENTIALS` → `FIREBASE_CREDENTIALS` → `./secrets/firebase-adminsdk.json` → `/secrets/firebase-adminsdk.json` です。
+- デフォルトの探索順は `FIREBASE_CREDENTIALS_FILE` → `GOOGLE_APPLICATION_CREDENTIALS` → `FIREBASE_CREDENTIALS` → `./secrets/firebase-adminsdk.json` → `/secrets/firebase-adminsdk.json` → `/etc/secrets/firebase-adminsdk.json` → `/etc/secrets/firebase_sa.json` → `/run/secrets/firebase-adminsdk.json` です。
 - Render などの本番環境では Secret File 機能で `firebase-adminsdk.json` を登録し、マウントパスを `./secrets/firebase-adminsdk.json` に設定してください。
 - 環境変数 `FIREBASE_CREDENTIALS_FILE` も同じパス (`./secrets/firebase-adminsdk.json`) にすることで、ローカル・本番とも同じ設定で動きます。
 - 旧来の `FIREBASE_SERVICE_ACCOUNT_JSON` を使った直接指定はフォールバックとして残していますが、内容は削除するか Secret File へ移行してください。
